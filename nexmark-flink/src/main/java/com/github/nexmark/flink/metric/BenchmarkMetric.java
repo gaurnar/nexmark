@@ -28,10 +28,12 @@ import java.util.TreeMap;
 public class BenchmarkMetric {
 	private final double tps;
 	private final double cpu;
+	private final Double latency;
 
-	public BenchmarkMetric(double tps, double cpu) {
+	public BenchmarkMetric(double tps, double cpu, Double latency) {
 		this.tps = tps;
 		this.cpu = cpu;
+		this.latency = latency;
 	}
 
 	public double getTps() {
@@ -50,32 +52,37 @@ public class BenchmarkMetric {
 		return NUMBER_FORMAT.format(cpu);
 	}
 
+	public Double getLatency() {
+		return latency;
+	}
+
+	public String getPrettyLatency() {
+		return latency != null ? formatDoubleValue(latency) : null;
+	}
+
 	@Override
 	public boolean equals(Object o) {
-		if (this == o) {
-			return true;
-		}
-		if (o == null || getClass() != o.getClass()) {
-			return false;
-		}
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
 		BenchmarkMetric that = (BenchmarkMetric) o;
 		return Double.compare(that.tps, tps) == 0 &&
-			Double.compare(that.cpu, cpu) == 0;
+				Double.compare(that.cpu, cpu) == 0 &&
+				Objects.equals(latency, that.latency);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(tps, cpu);
+		return Objects.hash(tps, cpu, latency);
 	}
 
 	@Override
 	public String toString() {
 		return "BenchmarkMetric{" +
-			"tps=" + tps +
-			", cpu=" + cpu +
-			'}';
+				"tps=" + tps +
+				", cpu=" + cpu +
+				", latency=" + latency +
+				'}';
 	}
-
 
 	// -------------------------------------------------------------------------------------------
 	// Pretty Utilities

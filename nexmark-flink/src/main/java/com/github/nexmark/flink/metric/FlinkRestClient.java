@@ -18,11 +18,11 @@
 
 package com.github.nexmark.flink.metric;
 
+import com.github.nexmark.flink.metric.latency.SinkMeanLatencyMetric;
+import com.github.nexmark.flink.metric.tps.TpsMetric;
+import com.github.nexmark.flink.utils.NexmarkUtils;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.node.ArrayNode;
-
-import com.github.nexmark.flink.utils.NexmarkUtils;
-import com.github.nexmark.flink.metric.tps.TpsMetric;
 import org.apache.http.Consts;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -40,6 +40,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -87,64 +89,51 @@ public class FlinkRestClient {
 
 	public String getCurrentJobId() {
 		String url = String.format("http://%s/jobs", jmEndpoint);
-		String response = executeAsString(url);
-		try {
-			JsonNode jsonNode = NexmarkUtils.MAPPER.readTree(response);
-			JsonNode jobs = jsonNode.get("jobs");
-			JsonNode job = jobs.get(0);
-			checkArgument(
+		JsonNode job = executeAsJsonNode(url).get("jobs").get(0);
+		checkArgument(
 				job.get("status").asText().equals("RUNNING"),
 				"The first job is not running.");
-			return job.get("id").asText();
-		} catch (Exception e) {
-			throw new RuntimeException("The response is not a valid JSON string:\n" + response, e);
-		}
+		return job.get("id").asText();
 	}
 
 	public boolean isJobRunning() {
 		String url = String.format("http://%s/jobs", jmEndpoint);
-		String response = executeAsString(url);
-		try {
-			JsonNode jsonNode = NexmarkUtils.MAPPER.readTree(response);
-			JsonNode jobs = jsonNode.get("jobs");
-			JsonNode job = jobs.get(0);
-			return job.get("status").asText().equals("RUNNING");
-		} catch (Exception e) {
-			throw new RuntimeException("The response is not a valid JSON string:\n" + response, e);
-		}
+		JsonNode job = executeAsJsonNode(url).get("jobs").get(0);
+		return job.get("status").asText().equals("RUNNING");
 	}
 
 	public String getSourceVertexId(String jobId) {
 		String url = String.format("http://%s/jobs/%s", jmEndpoint, jobId);
-		String response = executeAsString(url);
-		try {
-			JsonNode jsonNode = NexmarkUtils.MAPPER.readTree(response);
-			JsonNode vertices = jsonNode.get("vertices");
-			JsonNode sourceVertex = vertices.get(0);
-			checkArgument(
+		JsonNode sourceVertex = executeAsJsonNode(url).get("vertices").get(0);
+		checkArgument(
 				sourceVertex.get("name").asText().startsWith("Source:"),
 				"The first vertex is not a source.");
-			return sourceVertex.get("id").asText();
-		} catch (Exception e) {
-			throw new RuntimeException("The response is not a valid JSON string:\n" + response, e);
-		}
+		return sourceVertex.get("id").asText();
 	}
 
 	public String getTpsMetricName(String jobId, String vertexId) {
 		String url = String.format("http://%s/jobs/%s/vertices/%s/subtasks/metrics", jmEndpoint, jobId, vertexId);
-		String response = executeAsString(url);
-		try {
-			ArrayNode arrayNode = (ArrayNode) NexmarkUtils.MAPPER.readTree(response);
-			for (JsonNode node : arrayNode) {
-				String metricName = node.get("id").asText();
-				if (metricName.startsWith("Source_") && metricName.endsWith(".numRecordsOutPerSecond")) {
-					return metricName;
-				}
+		ArrayNode metrics = (ArrayNode) executeAsJsonNode(url);
+		for (JsonNode metric : metrics) {
+			String metricName = metric.get("id").asText();
+			if (metricName.startsWith("Source_") && metricName.endsWith(".numRecordsOutPerSecond")) {
+				return metricName;
 			}
-		} catch (Exception e) {
-			throw new RuntimeException("The response is not a valid JSON string:\n" + response, e);
 		}
-		throw new RuntimeException("Can't find TPS metric name from the response:\n" + response);
+		throw new RuntimeException("Can't find TPS metric name from the response");
+	}
+
+	public List<String> getSinkMeanLatencyMetricNames(String jobId, String vertexId) {
+		String url = String.format("http://%s/jobs/%s/metrics", jmEndpoint, jobId);
+		ArrayNode metrics = (ArrayNode) executeAsJsonNode(url);
+		List<String> metricNames = new ArrayList<>();
+		for (JsonNode metric : metrics) {
+			String metricName = metric.get("id").asText();
+			if (metricName.contains(vertexId) && metricName.endsWith("latency_mean")) {
+				metricNames.add(metricName);
+			}
+		}
+		return metricNames;
 	}
 
 	public synchronized TpsMetric getTpsMetric(String jobId, String vertexId, String tpsMetricName) {
@@ -156,6 +145,16 @@ public class FlinkRestClient {
 			tpsMetricName);
 		String response = executeAsString(url);
 		return TpsMetric.fromJson(response);
+	}
+
+	public synchronized SinkMeanLatencyMetric getSinkMeanLatencyMetric(String jobId, String latencyMetricName) {
+		String url = String.format(
+				"http://%s/jobs/%s/metrics?get=%s",
+				jmEndpoint,
+				jobId,
+				latencyMetricName);
+		String response = executeAsString(url);
+		return SinkMeanLatencyMetric.fromJson(response);
 	}
 
 	private void patch(String url) {
@@ -173,6 +172,15 @@ public class FlinkRestClient {
 		} catch (Exception e) {
 			httpPatch.abort();
 			throw new RuntimeException(e);
+		}
+	}
+
+	private JsonNode executeAsJsonNode(String url) {
+		String response = executeAsString(url);
+		try {
+			return NexmarkUtils.MAPPER.readTree(response);
+		} catch (Exception e) {
+			throw new RuntimeException("The response is not a valid JSON string:\n" + response, e);
 		}
 	}
 

@@ -18,11 +18,12 @@
 
 package com.github.nexmark.flink.metric;
 
+import com.github.nexmark.flink.metric.latency.SinkMeanLatencyMetric;
 import org.apache.flink.api.common.time.Deadline;
-import org.apache.flink.api.java.tuple.Tuple3;
 
 import com.github.nexmark.flink.metric.cpu.CpuMetricReceiver;
 import com.github.nexmark.flink.metric.tps.TpsMetric;
+import org.apache.flink.api.java.tuple.Tuple4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.github.nexmark.flink.metric.BenchmarkMetric.NUMBER_FORMAT;
 import static com.github.nexmark.flink.metric.BenchmarkMetric.formatDoubleValue;
@@ -62,42 +64,34 @@ public class MetricReporter {
 	}
 
 	private void submitMonitorThread(long eventsNum) {
+		JobInformation jobInfo;
 
-		String jobId;
-		String vertexId;
-		String metricName;
-
-		while (true) {
-			Tuple3<String, String, String> jobInfo = getJobInformation();
-			if (jobInfo != null) {
-				jobId = jobInfo.f0;
-				vertexId = jobInfo.f1;
-				metricName = jobInfo.f2;
-				break;
-			} else {
-				// wait for the job startup
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException e) {
-					throw new RuntimeException(e);
-				}
+		while ((jobInfo = getJobInformation()) == null) {
+			// wait for the job startup
+			try {
+				//noinspection BusyWait
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
 			}
 		}
 
 		this.service.scheduleWithFixedDelay(
-			new MetricCollector(jobId, vertexId, metricName, eventsNum),
+			new MetricCollector(jobInfo.jobId, jobInfo.vertexId, jobInfo.tpsMetricName,
+					jobInfo.sinkMeanLatencyMetricNames, eventsNum),
 			0L,
 			monitorInterval.toMillis(),
 			TimeUnit.MILLISECONDS
 		);
 	}
 
-	private Tuple3<String, String, String> getJobInformation() {
+	private JobInformation getJobInformation() {
 		try {
 			String jobId = flinkRestClient.getCurrentJobId();
 			String vertexId = flinkRestClient.getSourceVertexId(jobId);
-			String metricName = flinkRestClient.getTpsMetricName(jobId, vertexId);
-			return Tuple3.of(jobId, vertexId, metricName);
+			String tpsMetricName = flinkRestClient.getTpsMetricName(jobId, vertexId);
+			List<String> sinkMeanLatencyMetricNames = flinkRestClient.getSinkMeanLatencyMetricNames(jobId, vertexId);
+			return new JobInformation(jobId, vertexId, tpsMetricName, sinkMeanLatencyMetricNames);
 		} catch (Exception e) {
 			LOG.warn("Job metric is not ready yet.", e);
 			return null;
@@ -160,23 +154,40 @@ public class MetricReporter {
 			throw new RuntimeException("The metric reporter doesn't collect any metrics.");
 		}
 		double sumTps = 0.0;
+		double sumLatency = 0.0;
 		double sumCpu = 0.0;
+		int latencyMetricsCount = 0;
 
 		for (BenchmarkMetric metric : metrics) {
 			sumTps += metric.getTps();
+			if (metric.getLatency() != null) {
+				sumLatency += metric.getLatency();
+				latencyMetricsCount++;
+			}
 			sumCpu += metric.getCpu();
 		}
 
 		double avgTps = sumTps / metrics.size();
+		Double avgLatency = null;
+		if (latencyMetricsCount != 0) {
+			avgLatency = sumLatency / latencyMetricsCount;
+		}
 		double avgCpu = sumCpu / metrics.size();
 		JobBenchmarkMetric metric = new JobBenchmarkMetric(
-				avgTps, avgCpu, eventsNum, endTime - startTime);
+				avgTps, avgLatency, avgCpu, eventsNum, endTime - startTime);
 
 		String message;
 		if (eventsNum == 0) {
-			message = String.format("Summary Average: Throughput=%s, Cores=%s",
-					metric.getPrettyTps(),
-					metric.getPrettyCpu());
+			if (avgLatency != null) {
+				message = String.format("Summary Average: Throughput=%s, Latency=%s, Cores=%s",
+						metric.getPrettyTps(),
+						metric.getPrettyLatency(),
+						metric.getPrettyCpu());
+			} else {
+				message = String.format("Summary Average: Throughput=%s, Cores=%s",
+						metric.getPrettyTps(),
+						metric.getPrettyCpu());
+			}
 		} else {
 			message = String.format("Summary Average: EventsNum=%s, Cores=%s, Time=%s s",
 					NUMBER_FORMAT.format(eventsNum),
@@ -195,37 +206,70 @@ public class MetricReporter {
 
 	private class MetricCollector implements Runnable {
 		private final String jobId;
-		private final String vertexId;
-		private final String metricName;
+		private final String sourceVertexId;
+		private final String tpsMetricName;
+		private final List<String> sinkMeanLatencyMetricNames;
 		private final long eventsNum;
 
-		private MetricCollector(String jobId, String vertexId, String metricName, long eventsNum) {
+		private MetricCollector(String jobId, String sourceVertexId, String tpsMetricName,
+								List<String> sinkMeanLatencyMetricNames, long eventsNum) {
 			this.jobId = jobId;
-			this.vertexId = vertexId;
-			this.metricName = metricName;
+			this.sourceVertexId = sourceVertexId;
+			this.tpsMetricName = tpsMetricName;
+			this.sinkMeanLatencyMetricNames = sinkMeanLatencyMetricNames;
 			this.eventsNum = eventsNum;
 		}
 
 		@Override
 		public void run() {
 			try {
-				TpsMetric tps = flinkRestClient.getTpsMetric(jobId, vertexId, metricName);
+				TpsMetric tps = flinkRestClient.getTpsMetric(jobId, sourceVertexId, tpsMetricName);
+
+				Double sinkMeanLatency = null;
+				if (!sinkMeanLatencyMetricNames.isEmpty()) {
+					sinkMeanLatency = sinkMeanLatencyMetricNames.stream()
+							.map(metricName -> flinkRestClient.getSinkMeanLatencyMetric(jobId, metricName))
+							.collect(Collectors.averagingDouble(SinkMeanLatencyMetric::getValue));
+				}
+
 				double cpu = cpuMetricReceiver.getTotalCpu();
 				int tms = cpuMetricReceiver.getNumberOfTM();
-				BenchmarkMetric metric = new BenchmarkMetric(tps.getSum(), cpu);
+
+				BenchmarkMetric metric = new BenchmarkMetric(tps.getSum(), cpu, sinkMeanLatency);
 				// it's thread-safe to update metrics
 				metrics.add(metric);
 				// logging
-				String message = eventsNum == 0 ?
-						String.format("Current Throughput=%s, Cores=%s (%s TMs)",
-								metric.getPrettyTps(), metric.getPrettyCpu(), tms) :
-						String.format("Current Cores=%s (%s TMs)", metric.getPrettyCpu(), tms);
-
+				String message;
+				if (eventsNum == 0) {
+					if (sinkMeanLatency != null) {
+						message = String.format("Current Throughput=%s, Latency=%s, Cores=%s (%s TMs)",
+								metric.getPrettyTps(), metric.getPrettyLatency(), metric.getPrettyCpu(), tms);
+					} else {
+						message = String.format("Current Throughput=%s, Cores=%s (%s TMs)",
+								metric.getPrettyTps(), metric.getPrettyCpu(), tms);
+					}
+				} else {
+					message = String.format("Current Cores=%s (%s TMs)", metric.getPrettyCpu(), tms);
+				}
 				System.out.println(message);
 				LOG.info(message);
 			} catch (Exception e) {
 				error = e;
 			}
+		}
+	}
+
+	private static class JobInformation {
+		final String jobId;
+		final String vertexId;
+		final String tpsMetricName;
+		final List<String> sinkMeanLatencyMetricNames;
+
+		JobInformation(String jobId, String vertexId, String tpsMetricName, List<String> sinkMeanLatencyMetricNames) {
+			this.jobId = jobId;
+			this.vertexId = vertexId;
+			this.tpsMetricName = tpsMetricName;
+			this.sinkMeanLatencyMetricNames = sinkMeanLatencyMetricNames;
 		}
 	}
 }

@@ -19,9 +19,7 @@
 package com.github.nexmark.flink;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.util.Preconditions;
 
-import com.github.nexmark.flink.metric.BenchmarkMetric;
 import com.github.nexmark.flink.metric.FlinkRestClient;
 import com.github.nexmark.flink.metric.JobBenchmarkMetric;
 import com.github.nexmark.flink.metric.MetricReporter;
@@ -181,7 +179,7 @@ public class Benchmark {
 		if (totalMetrics.values().iterator().next().getEventsNum() != 0) {
 			printEventNumSummary(itemMaxLength, totalMetrics);
 		} else {
-			printTPSSummary(itemMaxLength, totalMetrics);
+			printMetricsSummary(itemMaxLength, totalMetrics);
 		}
 		System.err.println();
 	}
@@ -223,28 +221,55 @@ public class Benchmark {
 		printLine('-', "+", itemMaxLength, "", "", "", "", "", "");
 	}
 
-	private static void printTPSSummary(
+	private static void printMetricsSummary(
 			int itemMaxLength, LinkedHashMap<String, JobBenchmarkMetric> totalMetrics) {
-		printLine('-', "+", itemMaxLength, "", "", "", "");
-		printLine(' ', "|", itemMaxLength, " Nexmark Query", " Throughput (r/s)", " Cores", " Throughput/Cores");
-		printLine('-', "+", itemMaxLength, "", "", "", "");
+		boolean printLatency = totalMetrics.values().stream().anyMatch(metric -> metric.getLatency() != null);
+
+		if (printLatency) {
+			printLine('-', "+", itemMaxLength, "", "", "", "", "");
+			printLine(' ', "|", itemMaxLength, " Nexmark Query", " Throughput (r/s)", " Latency", " Cores", " Throughput/Cores");
+			printLine('-', "+", itemMaxLength, "", "", "", "", "");
+		} else {
+			printLine('-', "+", itemMaxLength, "", "", "", "");
+			printLine(' ', "|", itemMaxLength, " Nexmark Query", " Throughput (r/s)", " Cores", " Throughput/Cores");
+			printLine('-', "+", itemMaxLength, "", "", "", "");
+		}
 
 		long totalTpsPerCore = 0;
 		for (Map.Entry<String, JobBenchmarkMetric> entry : totalMetrics.entrySet()) {
 			JobBenchmarkMetric metric = entry.getValue();
-			printLine(' ', "|", itemMaxLength,
-				entry.getKey(),
-				metric.getPrettyTps(),
-				metric.getPrettyCpu(),
-				metric.getPrettyTpsPerCore());
+			if (printLatency) {
+				printLine(' ', "|", itemMaxLength,
+						entry.getKey(),
+						metric.getPrettyTps(),
+						metric.getPrettyLatency(),
+						metric.getPrettyCpu(),
+						metric.getPrettyTpsPerCore());
+			} else {
+				printLine(' ', "|", itemMaxLength,
+						entry.getKey(),
+						metric.getPrettyTps(),
+						metric.getPrettyCpu(),
+						metric.getPrettyTpsPerCore());
+			}
 			totalTpsPerCore += metric.getTpsPerCore();
 		}
-		printLine(' ', "|", itemMaxLength,
-				"Total",
-				"-",
-				"-",
-				formatLongValue(totalTpsPerCore));
-		printLine('-', "+", itemMaxLength, "", "", "", "");
+		if (printLatency) {
+			printLine(' ', "|", itemMaxLength,
+					"Total",
+					"-",
+					"-",
+					"-",
+					formatLongValue(totalTpsPerCore));
+			printLine('-', "+", itemMaxLength, "", "", "", "", "");
+		} else {
+			printLine(' ', "|", itemMaxLength,
+					"Total",
+					"-",
+					"-",
+					formatLongValue(totalTpsPerCore));
+			printLine('-', "+", itemMaxLength, "", "", "", "");
+		}
 	}
 
 	private static void printLine(

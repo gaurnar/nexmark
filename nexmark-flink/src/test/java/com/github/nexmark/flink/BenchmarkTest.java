@@ -30,21 +30,21 @@ public class BenchmarkTest {
 	@Test
 	public void testPrintSummary() {
 		LinkedHashMap<String, JobBenchmarkMetric> totalMetrics = new LinkedHashMap<>();
-		totalMetrics.put("q0", new JobBenchmarkMetric(1, 8.4));
-		totalMetrics.put("q1", new JobBenchmarkMetric(10, 18.4));
-		totalMetrics.put("q2", new JobBenchmarkMetric(100.0, 8.4));
-		totalMetrics.put("q3", new JobBenchmarkMetric(1000.0, 8.4));
-		totalMetrics.put("q4", new JobBenchmarkMetric(10_000.0, 8.4));
-		totalMetrics.put("q5", new JobBenchmarkMetric(100_000.0, 8.4));
-		totalMetrics.put("q6", new JobBenchmarkMetric(1_000_000.0, 8.4));
-		totalMetrics.put("q7", new JobBenchmarkMetric(10_000_000.0, 8.23));
-		totalMetrics.put("q8", new JobBenchmarkMetric(100_000_000.0, 8.4));
-		totalMetrics.put("q9", new JobBenchmarkMetric(1_000_000_000.0, 8.4));
-		totalMetrics.put("q10", new JobBenchmarkMetric(10_000_000_000.0, 8.4));
-		totalMetrics.put("q11", new JobBenchmarkMetric(100_000_000_000.0, 8.419));
-		totalMetrics.put("q12", new JobBenchmarkMetric(100_000_000.0, 8.4));
-		totalMetrics.put("q13", new JobBenchmarkMetric(10_000_000.0, 8.4));
-		totalMetrics.put("q14", new JobBenchmarkMetric(1_000_000.0, 8.4));
+		totalMetrics.put("q0", new JobBenchmarkMetric(1, 10.0, 8.4));
+		totalMetrics.put("q1", new JobBenchmarkMetric(10, 10.0, 18.4));
+		totalMetrics.put("q2", new JobBenchmarkMetric(100.0, 10.0, 8.4));
+		totalMetrics.put("q3", new JobBenchmarkMetric(1000.0, 10.0, 8.4));
+		totalMetrics.put("q4", new JobBenchmarkMetric(10_000.0, 10.0, 8.4));
+		totalMetrics.put("q5", new JobBenchmarkMetric(100_000.0, 10.0, 8.4));
+		totalMetrics.put("q6", new JobBenchmarkMetric(1_000_000.0, 10.0, 8.4));
+		totalMetrics.put("q7", new JobBenchmarkMetric(10_000_000.0, 10.0, 8.23));
+		totalMetrics.put("q8", new JobBenchmarkMetric(100_000_000.0, 10.0, 8.4));
+		totalMetrics.put("q9", new JobBenchmarkMetric(1_000_000_000.0, 10.0, 8.4));
+		totalMetrics.put("q10", new JobBenchmarkMetric(10_000_000_000.0, 10.0, 8.4));
+		totalMetrics.put("q11", new JobBenchmarkMetric(100_000_000_000.0, 10.0, 8.419));
+		totalMetrics.put("q12", new JobBenchmarkMetric(100_000_000.0, 10.0, 8.4));
+		totalMetrics.put("q13", new JobBenchmarkMetric(10_000_000.0, 10.0, 8.4));
+		totalMetrics.put("q14", new JobBenchmarkMetric(1_000_000.0, 10.0, 8.4));
 		Benchmark.printSummary(totalMetrics);
 	}
 

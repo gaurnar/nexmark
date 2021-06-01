@@ -20,21 +20,22 @@ package com.github.nexmark.flink.metric;
 
 import java.util.Objects;
 
-import static com.github.nexmark.flink.metric.BenchmarkMetric.NUMBER_FORMAT;
-import static com.github.nexmark.flink.metric.BenchmarkMetric.formatLongValue;
+import static com.github.nexmark.flink.metric.BenchmarkMetric.*;
 
 public class JobBenchmarkMetric {
 	private final double tps;
 	private final double cpu;
+	private final Double latency;
 	private final long eventsNum;
 	private final long timeMills;
 
-	public JobBenchmarkMetric(double tps, double cpu) {
-		this(tps, cpu, 0, 0);
+	public JobBenchmarkMetric(double tps, Double latency, double cpu) {
+		this(tps, cpu, latency, 0, 0);
 	}
 
-	public JobBenchmarkMetric(double tps, double cpu, long eventsNum, long timeMills) {
+	public JobBenchmarkMetric(double tps, Double latency, double cpu, long eventsNum, long timeMills) {
 		this.tps = tps;
+		this.latency = latency;
 		this.eventsNum = eventsNum;
 		this.cpu = cpu;
 		this.timeMills = timeMills;
@@ -64,6 +65,14 @@ public class JobBenchmarkMetric {
 		return formatLongValue(getTpsPerCore());
 	}
 
+	public Double getLatency() {
+		return latency;
+	}
+
+	public String getPrettyLatency() {
+		return latency != null ? formatDoubleValue(latency) : null;
+	}
+
 	public long getTpsPerCore() {
 		return (long) (tps / cpu);
 	}
@@ -74,30 +83,28 @@ public class JobBenchmarkMetric {
 
 	@Override
 	public boolean equals(Object o) {
-		if (this == o) {
-			return true;
-		}
-		if (o == null || getClass() != o.getClass()) {
-			return false;
-		}
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
 		JobBenchmarkMetric that = (JobBenchmarkMetric) o;
 		return Double.compare(that.tps, tps) == 0 &&
-				eventsNum == that.eventsNum &&
 				Double.compare(that.cpu, cpu) == 0 &&
-				timeMills == that.timeMills;
+				eventsNum == that.eventsNum &&
+				timeMills == that.timeMills &&
+				Objects.equals(latency, that.latency);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(tps, eventsNum, cpu, timeMills);
+		return Objects.hash(tps, cpu, latency, eventsNum, timeMills);
 	}
 
 	@Override
 	public String toString() {
-		return "BenchmarkMetric{" +
+		return "JobBenchmarkMetric{" +
 				"tps=" + tps +
-				", eventsNum=" + eventsNum +
 				", cpu=" + cpu +
+				", latency=" + latency +
+				", eventsNum=" + eventsNum +
 				", timeMills=" + timeMills +
 				'}';
 	}

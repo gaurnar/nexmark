@@ -103,3 +103,6 @@ akka.framesize: 102400kB
 web.timeout: 120000
 
 classloader.resolve-order: parent-first
+
+# uncomment if you want to measure latency (this will impact performance)
+#metrics.latency.interval: 1000
